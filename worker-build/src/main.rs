@@ -18,7 +18,7 @@ const OUT_DIR: &str = "build";
 const OUT_NAME: &str = "index";
 const WORKER_SUBDIR: &str = "worker";
 
-const SHIM_TEMPLATE: &str = include_str!("./js/shim.js");
+const SHIM_TEMPLATE: &str = include_str!("./js/shim.ts");
 
 mod install;
 
@@ -111,7 +111,7 @@ pub fn main() -> Result<()> {
         .replace("$SNIPPET_JS_IMPORTS", &js_imports)
         .replace("$SNIPPET_WASM_IMPORTS", &wasm_imports);
 
-    write_string_to_file(worker_path("shim.js"), shim)?;
+    write_string_to_file(worker_path("shim.ts"), shim)?;
 
     bundle(&esbuild_path)?;
 
@@ -276,12 +276,12 @@ fn bundle(esbuild_path: &Path) -> Result<()> {
     let esbuild_path = esbuild_path.canonicalize()?;
     let mut command = Command::new(esbuild_path);
     command.args([
-        "--external:./index.wasm",
-        "--external:cloudflare:sockets",
-        "--external:cloudflare:workers",
+        "--external:*.wasm",
+        "--external:cloudflare:*",
+        "--external:node:*",
         "--format=esm",
         "--bundle",
-        "./shim.js",
+        "./shim.ts",
         "--outfile=shim.mjs",
     ]);
 
@@ -307,7 +307,7 @@ fn remove_unused_js() -> Result<()> {
     }
 
     std::fs::remove_file(worker_path(format!("{OUT_NAME}_bg.js")))?;
-    std::fs::remove_file(worker_path("shim.js"))?;
+    std::fs::remove_file(worker_path("shim.ts"))?;
 
     Ok(())
 }
