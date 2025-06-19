@@ -38,7 +38,7 @@ const wasi = new WASI({
 
 const instance = new WebAssembly.Instance(wasmModule, {
   "./index_bg.js": imports,
-  ...wasi.getImports(wasmModule),
+  "wasi_snapshot_preview1": wasi.wasiImport,
 	$SNIPPET_WASM_IMPORTS
 });
 
