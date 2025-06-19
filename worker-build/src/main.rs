@@ -271,7 +271,7 @@ fn copy_generated_code_to_worker_dir() -> Result<()> {
 
 // Bundles the snippets and worker-related code into a single file.
 fn bundle(esbuild_path: &Path) -> Result<()> {
-    let no_minify = !matches!(env::var("NO_MINIFY"), Err(VarError::NotPresent));
+    let no_minify = !matches!(env::var("NO_MINIFY"), Err(VarError::NotPresent)) || cfg!(test) || std::env::args_os().any(|arg| arg == "--dev");
     let path = PathBuf::from(OUT_DIR).join(WORKER_SUBDIR).canonicalize()?;
     let esbuild_path = esbuild_path.canonicalize()?;
     let mut command = Command::new(esbuild_path);

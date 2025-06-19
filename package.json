@@ -2,7 +2,8 @@
   "dependencies": {
     "@changesets/changelog-github": "^0.4.8",
     "@changesets/cli": "^2.29.4",
-    "@cloudflare/workers-types": "^4.20250724.0"
+    "@cloudflare/workers-types": "^4.20250724.0",
+    "wasi-js": "^1.7.3"
   },
   "name": "workers-rs",
   "version": "0.0.12",
