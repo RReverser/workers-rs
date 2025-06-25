@@ -18,9 +18,12 @@ const instantiatedPromise = (async function instantiate() {
 
   if (needsWasi) {
     // top-level export from the module pulls too many unnecessary deps, use just the WASI submodule
-    const WASI = (await import("wasi-js/dist/wasi")).default;
+    let WASI = (await import("wasi-js/dist/wasi")).default;
     const fs = await import("node:fs");
     const path = await import("node:path");
+
+    // Fixup the wasi-js exports object that is messed up by the bundler.
+    WASI = (WASI as any).default;
 
     // Creates a TransformStream we can use to pipe our stdout to our response body.
     wasi = new WASI({
