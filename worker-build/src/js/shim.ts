@@ -6,65 +6,48 @@ import wasmModule from "./index.wasm";
 import { WorkerEntrypoint } from "cloudflare:workers";
 $SNIPPET_JS_IMPORTS
 
-const needsWasi = WebAssembly.Module.imports(wasmModule).some(i => i.module === "wasi_snapshot_preview1");
-
 const instantiatedPromise = (async function instantiate() {
   const importsObj: WebAssembly.Imports = {
-    "./index_bg.js": imports,
+    "./index_bg.js": imports
     $SNIPPET_WASM_IMPORTS
   };
 
-  let wasi: import("wasi-js/dist/wasi").default | undefined;
+  const needsWasi = WebAssembly.Module.imports(wasmModule).some(
+    i => i.module === "wasi_snapshot_preview1"
+  );
+
+  let wasi;
 
   if (needsWasi) {
     // top-level export from the module pulls too many unnecessary deps, use just the WASI submodule
-    let WASI = (await import("wasi-js/dist/wasi")).default;
-    const fs = await import("node:fs");
-    const path = await import("node:path");
+    const { default: Bindings } = await import(
+      "../../../../wasi-fs-access/src/bindings.js"
+    );
 
-    // Fixup the wasi-js exports object that is messed up by the bundler.
-    WASI = (WASI as any).default;
-
-    // Creates a TransformStream we can use to pipe our stdout to our response body.
-    wasi = new WASI({
-      bindings: {
-        hrtime: process.hrtime.bigint,
-        exit: (code: number) => {
-          process.exit(code);
-        },
-        kill: (signal: string) => {
-          throw new Error("Signals are not supported in Workers");
-        },
-        randomFillSync: (buf: any, offset: number, len: number) => {
-          // wasi-js always passes a Uint8Array but doesn't provide precise TS, so check for future-proofing.
-          if (!(buf instanceof Uint8Array)) {
-            throw new TypeError("Expected a Uint8Array for randomFillSync");
-          }
-          return crypto.getRandomValues(buf.subarray(offset, offset + len));
-        },
-        isTTY: () => false,
-        fs,
-        path
-      }
+    wasi = new Bindings({
+      env: process.env as Record<string, string>
     });
 
-    importsObj["wasi_snapshot_preview1"] = wasi.wasiImport;
+    await wasi.addPreOpen("/", "/");
+
+    importsObj["wasi_snapshot_preview1"] = wasi.getWasiImports();
   }
 
-  const instance = new WebAssembly.Instance(wasmModule, importsObj);
+  const { exports } = new WebAssembly.Instance(wasmModule, importsObj);
 
-  imports.__wbg_set_wasm(instance.exports);
+  wasi?.setExports(exports);
 
-  // Run the worker's initialization function.
-  (instance.exports.__wbindgen_start as Function)?.();
+  imports.__wbg_set_wasm(exports);
 
-  wasi?.start(instance);
+  // Run the worker"s initialization function.
+  (exports.__wbindgen_start as Function)?.();
 })();
 
 class Entrypoint extends WorkerEntrypoint {
   async fetch(request: Request) {
-    console.log(imports);
-    let response = instantiatedPromise.then(() => imports.fetch(request, this.env, this.ctx));
+    let response = instantiatedPromise.then(() =>
+      imports.fetch(request, this.env, this.ctx)
+    );
     $WAIT_UNTIL_RESPONSE;
     return response;
   }

@@ -115,7 +115,7 @@ pub fn main() -> Result<()> {
 
     bundle(&esbuild_path)?;
 
-    remove_unused_js()?;
+    // remove_unused_js()?;
 
     Ok(())
 }
