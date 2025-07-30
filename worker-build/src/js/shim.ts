@@ -4,12 +4,13 @@ import * as imports from "./index_bg.js";
 export * from "./index_bg.js";
 import wasmModule from "./index.wasm";
 import { WorkerEntrypoint } from "cloudflare:workers";
+import Bindings from "../../../../wasi-fs-access/src/bindings.js";
 $SNIPPET_JS_IMPORTS
 
-const instantiatedPromise = (async function instantiate() {
+async function instantiate() {
   const importsObj: WebAssembly.Imports = {
-    "./index_bg.js": imports
-    $SNIPPET_WASM_IMPORTS
+    "./index_bg.js": imports,
+    ...$SNIPPET_WASM_IMPORTS
   };
 
   const needsWasi = WebAssembly.Module.imports(wasmModule).some(
@@ -19,11 +20,6 @@ const instantiatedPromise = (async function instantiate() {
   let wasi;
 
   if (needsWasi) {
-    // top-level export from the module pulls too many unnecessary deps, use just the WASI submodule
-    const { default: Bindings } = await import(
-      "../../../../wasi-fs-access/src/bindings.js"
-    );
-
     wasi = new Bindings({
       env: process.env as Record<string, string>
     });
@@ -41,25 +37,30 @@ const instantiatedPromise = (async function instantiate() {
 
   // Run the worker"s initialization function.
   (exports.__wbindgen_start as Function)?.();
-})();
 
-class Entrypoint extends WorkerEntrypoint {
-  async fetch(request: Request) {
-    let response = instantiatedPromise.then(() =>
-      imports.fetch(request, this.env, this.ctx)
-    );
-    $WAIT_UNTIL_RESPONSE;
+  return wasi;
+}
+
+class Entrypoint<Env> extends WorkerEntrypoint<Env> {
+  #instantiated = instantiate();
+
+  async #wrap<I, O>(func: (arg: I, env: Env, ctx: ExecutionContext) => Promise<O>, arg: I) {
+    await this.#instantiated;
+    return func(arg, this.env, this.ctx);
+  }
+
+  fetch(request: Request) {
+    let response = this.#wrap(imports.fetch, request);
+    $WAIT_UNTIL_RESPONSE
     return response;
   }
 
   async queue(batch: MessageBatch<unknown>) {
-    await instantiatedPromise;
-    return imports.queue(batch, this.env, this.ctx);
+    return this.#wrap(imports.queue, batch);
   }
 
   async scheduled(controller: ScheduledController) {
-    await instantiatedPromise;
-    return imports.scheduled(controller, this.env, this.ctx);
+    return this.#wrap(imports.scheduled, controller);
   }
 }
 

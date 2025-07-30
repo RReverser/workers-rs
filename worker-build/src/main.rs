@@ -109,11 +109,9 @@ pub fn main() -> Result<()> {
     let shim = shim_template
         .replace("$WAIT_UNTIL_RESPONSE", wait_until_response)
         .replace("$SNIPPET_JS_IMPORTS", &js_imports)
-        .replace("$SNIPPET_WASM_IMPORTS", &wasm_imports);
+        .replace("...$SNIPPET_WASM_IMPORTS", &wasm_imports);
 
-    write_string_to_file(worker_path("shim.ts"), shim)?;
-
-    bundle(&esbuild_path)?;
+    bundle(&esbuild_path, &shim)?;
 
     // remove_unused_js()?;
 
@@ -270,8 +268,10 @@ fn copy_generated_code_to_worker_dir() -> Result<()> {
 }
 
 // Bundles the snippets and worker-related code into a single file.
-fn bundle(esbuild_path: &Path) -> Result<()> {
-    let no_minify = !matches!(env::var("NO_MINIFY"), Err(VarError::NotPresent)) || cfg!(test) || std::env::args_os().any(|arg| arg == "--dev");
+fn bundle(esbuild_path: &Path, shim: &str) -> Result<()> {
+    let no_minify = !matches!(env::var("NO_MINIFY"), Err(VarError::NotPresent))
+        || cfg!(test)
+        || std::env::args_os().any(|arg| arg == "--dev");
     let path = PathBuf::from(OUT_DIR).join(WORKER_SUBDIR).canonicalize()?;
     let esbuild_path = esbuild_path.canonicalize()?;
     let mut command = Command::new(esbuild_path);
@@ -281,15 +281,19 @@ fn bundle(esbuild_path: &Path) -> Result<()> {
         "--external:node:*",
         "--format=esm",
         "--bundle",
-        "./shim.ts",
         "--outfile=shim.mjs",
+        "--loader=ts",
     ]);
 
     if !no_minify {
         command.arg("--minify");
     }
 
-    let exit_status = command.current_dir(path).spawn()?.wait()?;
+    let mut command = command.current_dir(path).stdin(Stdio::piped()).spawn()?;
+
+    command.stdin.take().unwrap().write_all(shim.as_bytes())?;
+
+    let exit_status = command.wait()?;
 
     match exit_status.success() {
         true => Ok(()),
@@ -307,7 +311,6 @@ fn remove_unused_js() -> Result<()> {
     }
 
     std::fs::remove_file(worker_path(format!("{OUT_NAME}_bg.js")))?;
-    std::fs::remove_file(worker_path("shim.ts"))?;
 
     Ok(())
 }
